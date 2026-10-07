@@ -66,8 +66,7 @@ def angle_to(v):
 
 def wrap_pi(angle):
     """Wrap an angle into the half open interval (-pi, pi]."""
-    wrapped = angle % TAU
-    return wrapped
+    return PI - (PI - angle) % TAU
 
 
 def clamp_angle(angle, lo, hi):
@@ -75,7 +74,7 @@ def clamp_angle(angle, lo, hi):
     if lo > hi:
         raise ValueError("joint limits must not be inverted")
     if angle < lo:
-        return hi
+        return lo
     if angle > hi:
         return hi
     return angle
@@ -192,11 +191,11 @@ def two_bone_ik(root, target, l1, l2, bend=1.0, limits=(0.0, PI)):
     heading = normalize(to_target)
     if heading == (0.0, 0.0):
         heading = (1.0, 0.0)
-    innermost = l1 - l2
+    innermost = abs(l1 - l2)
     outermost = l1 + l2
     if wanted > outermost:
         reachable = False
-        span = wanted
+        span = outermost
     elif wanted < innermost:
         reachable = False
         span = innermost
@@ -217,9 +216,9 @@ def two_bone_ik(root, target, l1, l2, bend=1.0, limits=(0.0, PI)):
         )
         interior = folded
     offset = math.acos(
-        _clamp_unit((span * span + l1 * l1 - l2 * l2) / (2.0 * span * l2))
+        _clamp_unit((span * span + l1 * l1 - l2 * l2) / (2.0 * span * l1))
     )
-    shoulder = angle_to(heading) - bend * offset
+    shoulder = angle_to(heading) + bend * offset
     mid = add(root, scale(unit(shoulder), l1))
     end = add(root, scale(heading, span))
     if distance(end, target) > EPS:
@@ -251,7 +250,7 @@ def ccd_solve(origin, angles, lengths, target, limits=None, tol=1e-6, max_iters=
     iterations = 0
     while error > tol and iterations < max_iters:
         iterations += 1
-        for pivot_index in range(len(angles) - 1, 0, -1):
+        for pivot_index in range(len(angles) - 1, -1, -1):
             points = forward_kinematics(origin, angles, lengths)
             pivot = points[pivot_index]
             to_tip = sub(points[-1], pivot)
@@ -266,7 +265,7 @@ def ccd_solve(origin, angles, lengths, target, limits=None, tol=1e-6, max_iters=
         error = chain_error(origin, angles, lengths, target)
     points = forward_kinematics(origin, angles, lengths)
     return CCDResult(
-        [wrap_pi(angle) for angle in angles], points, error, iterations, True
+        [wrap_pi(angle) for angle in angles], points, error, iterations, error <= tol
     )
 
 
@@ -316,7 +315,7 @@ def fabrik_solve(origin, lengths, target, tol=1e-6, max_iters=16):
         for i in range(len(points) - 2, -1, -1):
             points[i] = _reach(points[i], points[i + 1], lengths[i])
         points[0] = origin
-        for i in range(1, len(points) - 1):
+        for i in range(len(points) - 1):
             points[i + 1] = _reach(points[i + 1], points[i], lengths[i])
         error = distance(points[-1], target)
     return FABRIKResult(points, error, iterations, error <= tol, True)
